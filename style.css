@@ -248,12 +248,13 @@ h2 {
 }
 
 .card.completed-today {
-  border-color: var(--success);
+  border: 2px solid var(--success) !important;
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.45), inset 0 0 8px rgba(16, 185, 129, 0.15), var(--shadow);
 }
 
 .card.completed-today:hover, .card.completed-today:active {
-  border-color: var(--success);
-  box-shadow: 0 0 15px rgba(16, 185, 129, 0.25), var(--shadow-lg);
+  box-shadow: 0 0 28px rgba(16, 185, 129, 0.65), inset 0 0 12px rgba(16, 185, 129, 0.25), var(--shadow-lg);
+  transform: translateY(-2px);
 }
 
 .card-title {
@@ -337,8 +338,8 @@ h2 {
 }
 
 .exercise-card.has-today-result {
-  border-color: var(--success) !important;
-  box-shadow: 0 0 15px rgba(16, 185, 129, 0.25), var(--shadow);
+  border: 2px solid var(--success) !important;
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.45), inset 0 0 8px rgba(16, 185, 129, 0.15), var(--shadow);
 }
 
 .exercise-img {
