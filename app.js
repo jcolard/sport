@@ -382,12 +382,21 @@ async function renderSessionDetail(sessionId) {
   list.className = 'exercise-list';
 
   for (const ex of exercises) {
-    const card = document.createElement('div');
-    card.className = 'exercise-card';
-    card.id = `exercise-card-${ex.id}`;
-
     // Load results history
     const results = await dbActions.getResultsByExercise(ex.id);
+
+    // Check if any performance was logged today (local time)
+    const hasTodayResult = results.some(r => {
+      const d = new Date(r.timestamp);
+      const today = new Date();
+      return d.getDate() === today.getDate() &&
+             d.getMonth() === today.getMonth() &&
+             d.getFullYear() === today.getFullYear();
+    });
+
+    const card = document.createElement('div');
+    card.className = `exercise-card${hasTodayResult ? ' has-today-result' : ''}`;
+    card.id = `exercise-card-${ex.id}`;
 
     let imgHTML = '';
     if (ex.photo) {
@@ -455,6 +464,9 @@ async function renderSessionDetail(sessionId) {
       // Re-render only the history container for this card
       const updatedResults = await dbActions.getResultsByExercise(ex.id);
       renderResultsHistoryList(updatedResults, historyContainer);
+
+      // Highlight the card immediately
+      card.classList.add('has-today-result');
     };
 
     list.appendChild(card);

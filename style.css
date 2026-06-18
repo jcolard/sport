@@ -300,17 +300,36 @@ h2 {
 /* Exercises Layout in Session Details */
 .exercise-list {
   display: flex;
-  flex-direction: column;
-  gap: 20px;
-  margin-top: 20px;
+  flex-direction: row;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none; /* Firefox */
+  gap: 16px;
+  margin: 20px -20px 0 -20px;
+  padding: 10px 20px 24px 20px;
+}
+
+.exercise-list::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
 }
 
 .exercise-card {
+  flex: 0 0 calc(100vw - 40px);
+  max-width: 500px;
+  scroll-snap-align: center;
   background-color: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius);
   overflow: hidden;
   box-shadow: var(--shadow);
+  transition: var(--transition);
+}
+
+.exercise-card.has-today-result {
+  border-color: var(--success) !important;
+  box-shadow: 0 0 15px rgba(16, 185, 129, 0.25), var(--shadow);
 }
 
 .exercise-img {
