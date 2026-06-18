@@ -266,12 +266,6 @@ const router = {
       this.showView('view-session-detail');
       await renderSessionDetail(sessionId);
     }
-    // Route: #/session/:id/edit
-    else if (hash.startsWith('#/session/') && hash.endsWith('/edit')) {
-      const sessionId = hash.split('/')[2];
-      this.showView('view-session-form');
-      await setupSessionForm(sessionId);
-    }
     // Route: #/session/:sessionId/exercise/:id/edit
     else if (hash.startsWith('#/session/') && hash.includes('/exercise/') && hash.endsWith('/edit')) {
       const parts = hash.split('/');
@@ -279,6 +273,12 @@ const router = {
       const exerciseId = parts[4];
       this.showView('view-exercise-form');
       await setupExerciseForm(sessionId, exerciseId);
+    }
+    // Route: #/session/:id/edit
+    else if (hash.startsWith('#/session/') && hash.endsWith('/edit') && !hash.includes('/exercise/')) {
+      const sessionId = hash.split('/')[2];
+      this.showView('view-session-form');
+      await setupSessionForm(sessionId);
     }
     // Fallback
     else {
