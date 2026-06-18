@@ -323,8 +323,29 @@ async function renderSessionsList() {
   for (const session of sessions) {
     const exercises = await dbActions.getExercisesBySession(session.id);
     
+    // Check if session is fully completed today
+    let isSessionCompletedToday = false;
+    if (exercises.length > 0) {
+      let allExCompleted = true;
+      for (const ex of exercises) {
+        const results = await dbActions.getResultsByExercise(ex.id);
+        const hasTodayResult = results.some(r => {
+          const d = new Date(r.timestamp);
+          const today = new Date();
+          return d.getDate() === today.getDate() &&
+                 d.getMonth() === today.getMonth() &&
+                 d.getFullYear() === today.getFullYear();
+        });
+        if (!hasTodayResult) {
+          allExCompleted = false;
+          break;
+        }
+      }
+      isSessionCompletedToday = allExCompleted;
+    }
+    
     const card = document.createElement('div');
-    card.className = 'card';
+    card.className = `card${isSessionCompletedToday ? ' completed-today' : ''}`;
     card.onclick = () => { window.location.hash = `#/session/${session.id}`; };
     
     card.innerHTML = `

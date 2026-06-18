@@ -247,6 +247,15 @@ h2 {
   transform: translateY(-2px);
 }
 
+.card.completed-today {
+  border-color: var(--success);
+}
+
+.card.completed-today:hover, .card.completed-today:active {
+  border-color: var(--success);
+  box-shadow: 0 0 15px rgba(16, 185, 129, 0.25), var(--shadow-lg);
+}
+
 .card-title {
   font-size: 1.25rem;
   font-weight: 600;
