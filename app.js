@@ -182,6 +182,22 @@ const dbActions = {
       });
       request.onsuccess = () => resolve(request.result);
     });
+  },
+  getAllExercises() {
+    return new Promise((resolve) => {
+      const transaction = db.transaction(['exercises'], 'readonly');
+      const store = transaction.objectStore('exercises');
+      const request = store.getAll();
+      request.onsuccess = () => resolve(request.result || []);
+    });
+  },
+  getAllResults() {
+    return new Promise((resolve) => {
+      const transaction = db.transaction(['results'], 'readonly');
+      const store = transaction.objectStore('results');
+      const request = store.getAll();
+      request.onsuccess = () => resolve(request.result || []);
+    });
   }
 };
 
@@ -480,6 +496,9 @@ async function renderSessionDetail(sessionId) {
 
       await dbActions.addResult(newResult);
       input.value = '';
+      if ('vibrate' in navigator) {
+        navigator.vibrate(80);
+      }
       showToast("Performance enregistrée !");
       
       // Re-render only the history container for this card
@@ -715,6 +734,90 @@ function escapeHTML(str) {
     .replace(/'/g, '&#039;');
 }
 
+// --- Data Backup (Export) ---
+async function exportDatabase() {
+  try {
+    showToast("Préparation de l'export...");
+    const sessions = await dbActions.getAllSessions();
+    const exercises = await dbActions.getAllExercises();
+    const results = await dbActions.getAllResults();
+
+    const backupData = {
+      sessions,
+      exercises,
+      results,
+      exportedAt: new Date().toISOString()
+    };
+
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backupData, null, 2));
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute("href", dataStr);
+    downloadAnchor.setAttribute("download", `gymtracker_backup_${new Date().toISOString().slice(0, 10)}.json`);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+
+    showToast("Sauvegarde téléchargée !");
+  } catch (err) {
+    console.error(err);
+    showToast("Erreur lors de l'export.");
+  }
+}
+
+// --- Agile Timer Logic ---
+let timerInterval = null;
+let timerSeconds = 80;
+
+function initTimer() {
+  const timerBtn = document.getElementById('timer-btn');
+  if (!timerBtn) return;
+
+  timerBtn.addEventListener('click', () => {
+    // Vibration on button click (haptic feedback)
+    if ('vibrate' in navigator) {
+      navigator.vibrate(50);
+    }
+
+    if (timerInterval) {
+      // If already running: reset to 80 and keep running
+      timerSeconds = 80;
+      timerBtn.textContent = '80s';
+      
+      // Visual flash animation on reset
+      timerBtn.style.animation = 'none';
+      timerBtn.offsetHeight; /* trigger reflow */
+      timerBtn.style.animation = 'pulse-timer 2s infinite';
+    } else {
+      // Start the timer
+      startTimer();
+    }
+  });
+}
+
+function startTimer() {
+  const timerBtn = document.getElementById('timer-btn');
+  timerSeconds = 80;
+  timerBtn.textContent = '80s';
+  timerBtn.classList.add('running');
+
+  timerInterval = setInterval(() => {
+    timerSeconds--;
+    timerBtn.textContent = `${timerSeconds}s`;
+
+    if (timerSeconds <= 0) {
+      clearInterval(timerInterval);
+      timerInterval = null;
+      timerBtn.classList.remove('running');
+      timerBtn.textContent = '80s';
+      
+      // Vibrate 3 times: [vibrate 300ms, pause 200ms, vibrate 300ms, pause 200ms, vibrate 300ms]
+      if ('vibrate' in navigator) {
+        navigator.vibrate([300, 200, 300, 200, 300]);
+      }
+    }
+  }, 1000);
+}
+
 // --- Setup App Hooks ---
 window.addEventListener('DOMContentLoaded', async () => {
   // Check online status
@@ -731,6 +834,18 @@ window.addEventListener('DOMContentLoaded', async () => {
   window.addEventListener('online', updateOnlineStatus);
   window.addEventListener('offline', updateOnlineStatus);
   updateOnlineStatus();
+
+  // Initialize Export and Timer
+  initTimer();
+  const exportBtn = document.getElementById('btn-export');
+  if (exportBtn) {
+    exportBtn.addEventListener('click', () => {
+      if ('vibrate' in navigator) {
+        navigator.vibrate(50);
+      }
+      exportDatabase();
+    });
+  }
 
   // Initialize DB and router
   try {
