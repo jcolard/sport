@@ -742,9 +742,15 @@ async function exportDatabase() {
     const exercises = await dbActions.getAllExercises();
     const results = await dbActions.getAllResults();
 
+    // Strip out base64 photos to keep backup light and clean
+    const exercisesWithoutPhotos = exercises.map(ex => {
+      const { photo, ...rest } = ex;
+      return rest;
+    });
+
     const backupData = {
       sessions,
-      exercises,
+      exercises: exercisesWithoutPhotos,
       results,
       exportedAt: new Date().toISOString()
     };
