@@ -772,7 +772,45 @@ async function exportDatabase() {
 
 // --- Agile Timer Logic ---
 let timerInterval = null;
-let timerSeconds = 80;
+let timerEndTime = 0;
+let audioCtx = null;
+let silenceNode = null;
+
+// Keep CPU awake by playing looping silence
+function playSilence() {
+  try {
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+    
+    stopSilence();
+    
+    const buffer = audioCtx.createBuffer(1, audioCtx.sampleRate, audioCtx.sampleRate);
+    const channel = buffer.getChannelData(0);
+    channel.fill(0); // Saturated silence
+    
+    silenceNode = audioCtx.createBufferSource();
+    silenceNode.buffer = buffer;
+    silenceNode.loop = true;
+    silenceNode.connect(audioCtx.destination);
+    silenceNode.start();
+  } catch (e) {
+    console.warn("Failed to play silence keep-alive:", e);
+  }
+}
+
+function stopSilence() {
+  if (silenceNode) {
+    try {
+      silenceNode.stop();
+      silenceNode.disconnect();
+    } catch (e) {}
+    silenceNode = null;
+  }
+}
 
 function initTimer() {
   const timerBtn = document.getElementById('timer-btn');
@@ -784,17 +822,20 @@ function initTimer() {
       navigator.vibrate(50);
     }
 
+    // Set end time to 80s from now
+    timerEndTime = Date.now() + 80 * 1000;
+    timerBtn.textContent = '80s';
+
+    // Play silent loop to prevent Chrome from pausing JavaScript when screen turns off
+    playSilence();
+
     if (timerInterval) {
-      // If already running: reset to 80 and keep running
-      timerSeconds = 80;
-      timerBtn.textContent = '80s';
-      
       // Visual flash animation on reset
       timerBtn.style.animation = 'none';
       timerBtn.offsetHeight; /* trigger reflow */
       timerBtn.style.animation = 'pulse-timer 2s infinite';
     } else {
-      // Start the timer
+      // Start the timer loop
       startTimer();
     }
   });
@@ -802,26 +843,30 @@ function initTimer() {
 
 function startTimer() {
   const timerBtn = document.getElementById('timer-btn');
-  timerSeconds = 80;
-  timerBtn.textContent = '80s';
   timerBtn.classList.add('running');
 
-  timerInterval = setInterval(() => {
-    timerSeconds--;
-    timerBtn.textContent = `${timerSeconds}s`;
+  if (timerInterval) clearInterval(timerInterval);
 
-    if (timerSeconds <= 0) {
+  timerInterval = setInterval(() => {
+    const remainingMs = timerEndTime - Date.now();
+    const remainingSeconds = Math.max(0, Math.ceil(remainingMs / 1000));
+    
+    timerBtn.textContent = `${remainingSeconds}s`;
+
+    if (remainingSeconds <= 0) {
       clearInterval(timerInterval);
       timerInterval = null;
       timerBtn.classList.remove('running');
       timerBtn.textContent = '80s';
+      
+      stopSilence();
       
       // Vibrate 3 times: [vibrate 300ms, pause 200ms, vibrate 300ms, pause 200ms, vibrate 300ms]
       if ('vibrate' in navigator) {
         navigator.vibrate([300, 200, 300, 200, 300]);
       }
     }
-  }, 1000);
+  }, 250); // check 4 times a second for timestamp precision
 }
 
 // --- Setup App Hooks ---
