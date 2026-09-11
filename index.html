@@ -183,6 +183,39 @@
             <img id="exercise-photo-preview" class="photo-preview" alt="Aperçu de la photo de l'exercice">
           </div>
         </div>
+
+        <div class="form-group">
+          <label>Vidéo de l'exercice (optionnelle)</label>
+          <input type="file" id="exercise-video-file" accept="video/*" style="display: none;">
+          <div id="exercise-video-container" class="media-upload-container">
+            <div id="video-upload-placeholder" class="media-upload-placeholder">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="5 3 19 12 5 21 5 3"></polygon>
+              </svg>
+              <span>Choisir une vidéo ou filmer</span>
+            </div>
+            <div id="video-upload-info" class="media-file-info" style="display: none;">
+              <div class="media-file-details">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                </svg>
+                <div class="media-file-text-group">
+                  <span id="video-file-name" class="media-file-name">video.mp4</span>
+                  <span id="video-file-size" class="media-file-size">0 Mo</span>
+                </div>
+              </div>
+              <button type="button" id="btn-remove-video" class="btn-remove-media" title="Supprimer la vidéo">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="3 6 5 6 21 6"></polyline>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                </svg>
+              </button>
+            </div>
+          </div>
+          <p id="video-size-warning" class="form-warning-msg" style="display: none;">
+            ⚠️ Cette vidéo dépasse 50 Mo. Pour économiser l'espace de votre téléphone, privilégiez des clips courts (5 à 15s).
+          </p>
+        </div>
         
         <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 30px;">
           <button type="submit" class="btn btn-primary">Enregistrer l'exercice</button>
@@ -206,6 +239,22 @@
         <div class="modal-actions">
           <button id="btn-cancel-link-modal" type="button" class="btn btn-secondary">Annuler</button>
           <button id="btn-confirm-link-modal" type="button" class="btn btn-primary">Ajouter à la séance</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 6. MODAL: DEDICATED VIDEO PLAYER OVERLAY -->
+    <div id="modal-video-player" class="modal-overlay">
+      <div class="video-modal-card">
+        <div class="video-modal-header">
+          <div class="video-modal-title-group">
+            <span class="video-badge-pill">Vidéo</span>
+            <h3 id="video-player-title" class="modal-title">Démonstration</h3>
+          </div>
+          <button id="btn-close-video-modal" class="btn-close-modal" type="button" aria-label="Fermer la vidéo">&times;</button>
+        </div>
+        <div class="video-container">
+          <video id="exercise-video-element" controls playsinline preload="metadata"></video>
         </div>
       </div>
     </div>

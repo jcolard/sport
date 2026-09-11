@@ -1,6 +1,6 @@
 // --- Database Config & Helper ---
 const DB_NAME = 'sport_pwa_db';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 let db = null;
 
 // Initialize IndexedDB
@@ -44,6 +44,11 @@ function initDB() {
       if (!dbInstance.objectStoreNames.contains('results')) {
         const resultStore = dbInstance.createObjectStore('results', { keyPath: 'id', autoIncrement: true });
         resultStore.createIndex('exerciseId', 'exerciseId', { unique: false });
+      }
+
+      // Store 4: Vidéos d'exercices (Exercise Videos)
+      if (!dbInstance.objectStoreNames.contains('exercise_videos')) {
+        dbInstance.createObjectStore('exercise_videos', { keyPath: 'exerciseId' });
       }
 
       // Migration: Convert legacy sessionId to sessionIds array
@@ -266,6 +271,9 @@ const dbActions = {
 
   deleteExercise(id) {
     return new Promise(async (resolve) => {
+      // Also delete video if present
+      await this.deleteExerciseVideo(id);
+
       // Deleting an exercise should also clean up its results
       const transactionResults = db.transaction(['results'], 'readwrite');
       const resultsStore = transactionResults.objectStore('results');
@@ -286,6 +294,45 @@ const dbActions = {
         const requestEx = storeEx.delete(Number(id));
         requestEx.onsuccess = () => resolve(true);
       };
+    });
+  },
+
+  // --- Exercise Videos ---
+  saveExerciseVideo(exerciseId, blob, meta = {}) {
+    return new Promise((resolve) => {
+      const transaction = db.transaction(['exercise_videos'], 'readwrite');
+      const store = transaction.objectStore('exercise_videos');
+      const request = store.put({
+        exerciseId: Number(exerciseId),
+        blob,
+        fileName: meta.fileName || 'video.mp4',
+        fileSize: meta.fileSize || blob.size,
+        fileType: blob.type || 'video/mp4',
+        updatedAt: new Date().toISOString()
+      });
+      request.onsuccess = () => resolve(true);
+      request.onerror = (e) => {
+        console.error("Failed to save video:", e);
+        resolve(false);
+      };
+    });
+  },
+  getExerciseVideo(exerciseId) {
+    return new Promise((resolve) => {
+      const transaction = db.transaction(['exercise_videos'], 'readonly');
+      const store = transaction.objectStore('exercise_videos');
+      const request = store.get(Number(exerciseId));
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () => resolve(null);
+    });
+  },
+  deleteExerciseVideo(exerciseId) {
+    return new Promise((resolve) => {
+      const transaction = db.transaction(['exercise_videos'], 'readwrite');
+      const store = transaction.objectStore('exercise_videos');
+      const request = store.delete(Number(exerciseId));
+      request.onsuccess = () => resolve(true);
+      request.onerror = () => resolve(false);
     });
   },
 
@@ -388,6 +435,88 @@ function formatDate(isoString) {
   const date = new Date(isoString);
   const options = { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' };
   return date.toLocaleDateString('fr-FR', options);
+}
+
+// --- File Size Formatter ---
+function formatBytes(bytes) {
+  if (!bytes || bytes === 0) return '0 Octet';
+  const k = 1024;
+  const sizes = ['Octets', 'Ko', 'Mo', 'Go'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
+// --- Dedicated Video Player Modal ---
+let activeVideoUrl = null;
+
+function setupVideoModal() {
+  const modal = document.getElementById('modal-video-player');
+  const closeBtn = document.getElementById('btn-close-video-modal');
+  const videoElem = document.getElementById('exercise-video-element');
+
+  function closeVideoModal() {
+    if (!modal) return;
+    modal.classList.remove('active');
+    if (videoElem) {
+      videoElem.pause();
+      videoElem.src = '';
+      videoElem.load();
+    }
+    if (activeVideoUrl) {
+      URL.revokeObjectURL(activeVideoUrl);
+      activeVideoUrl = null;
+    }
+  }
+
+  if (closeBtn) {
+    closeBtn.onclick = closeVideoModal;
+  }
+
+  if (modal) {
+    modal.onclick = (e) => {
+      if (e.target === modal) {
+        closeVideoModal();
+      }
+    };
+  }
+
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && modal && modal.classList.contains('active')) {
+      closeVideoModal();
+    }
+  });
+
+  return { closeVideoModal };
+}
+
+async function openVideoModal(exerciseId, title) {
+  const modal = document.getElementById('modal-video-player');
+  const titleElem = document.getElementById('video-player-title');
+  const videoElem = document.getElementById('exercise-video-element');
+
+  if (!modal || !videoElem) return;
+
+  showToast("Chargement de la vidéo...");
+  const videoRecord = await dbActions.getExerciseVideo(exerciseId);
+
+  if (!videoRecord || !videoRecord.blob) {
+    showToast("Vidéo introuvable ou corrompue.");
+    return;
+  }
+
+  if (activeVideoUrl) {
+    URL.revokeObjectURL(activeVideoUrl);
+    activeVideoUrl = null;
+  }
+
+  activeVideoUrl = URL.createObjectURL(videoRecord.blob);
+  videoElem.src = activeVideoUrl;
+  if (titleElem) {
+    titleElem.textContent = title || "Démonstration";
+  }
+
+  modal.classList.add('active');
+  videoElem.play().catch(() => {});
 }
 
 // --- Views Routing & Logic ---
@@ -650,6 +779,18 @@ async function renderSessionDetail(sessionId) {
       sessionBadgesHTML = `<div class="exercise-sessions-badges">${chips}</div>`;
     }
 
+    let videoBtnHTML = '';
+    if (ex.hasVideo) {
+      videoBtnHTML = `
+        <button type="button" class="btn-watch-video" data-exercise-id="${ex.id}" data-exercise-title="${escapeHTML(ex.title)}">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+            <polygon points="5 3 19 12 5 21 5 3"></polygon>
+          </svg>
+          Voir la vidéo
+        </button>
+      `;
+    }
+
     card.innerHTML = `
       ${imgHTML}
       <div class="exercise-body">
@@ -666,6 +807,7 @@ async function renderSessionDetail(sessionId) {
           </div>
         </div>
         ${sessionBadgesHTML}
+        ${videoBtnHTML}
         ${ex.description ? `<p class="exercise-desc">${escapeHTML(ex.description)}</p>` : ''}
         
         <div class="quick-input-section">
@@ -681,6 +823,14 @@ async function renderSessionDetail(sessionId) {
         </div>
       </div>
     `;
+
+    // Watch video button click event
+    const watchBtn = card.querySelector('.btn-watch-video');
+    if (watchBtn) {
+      watchBtn.onclick = () => {
+        openVideoModal(ex.id, ex.title);
+      };
+    }
 
     // Edit button click event
     card.querySelector('.edit-exercise-trigger').onclick = () => {
@@ -812,6 +962,16 @@ async function setupExerciseForm(sessionId, exerciseId) {
   const deleteBtn = document.getElementById('btn-delete-exercise-form');
   const formTitle = document.getElementById('exercise-form-heading');
 
+  // Video Form Controls
+  const videoFileInput = document.getElementById('exercise-video-file');
+  const videoContainer = document.getElementById('exercise-video-container');
+  const videoPlaceholder = document.getElementById('video-upload-placeholder');
+  const videoInfo = document.getElementById('video-upload-info');
+  const videoFileName = document.getElementById('video-file-name');
+  const videoFileSize = document.getElementById('video-file-size');
+  const removeVideoBtn = document.getElementById('btn-remove-video');
+  const videoWarning = document.getElementById('video-size-warning');
+
   // Clear inputs and previews
   titleInput.value = '';
   descInput.value = '';
@@ -824,6 +984,14 @@ async function setupExerciseForm(sessionId, exerciseId) {
   removeSessionBtn.style.display = 'none';
   deleteBtn.style.display = 'none';
   
+  // Clear video state
+  videoFileInput.value = '';
+  videoPlaceholder.style.display = 'flex';
+  videoInfo.style.display = 'none';
+  videoWarning.style.display = 'none';
+  let selectedVideoFile = null;
+  let videoAction = 'keep'; // 'keep', 'replace', 'remove'
+
   let currentPhotoBase64 = '';
 
   // Setup Back Link
@@ -891,6 +1059,40 @@ async function setupExerciseForm(sessionId, exerciseId) {
     }
   };
 
+  // Setup Video Picker Trigger
+  videoContainer.onclick = (e) => {
+    if (e.target.closest('#btn-remove-video')) return;
+    videoFileInput.click();
+  };
+
+  videoFileInput.onchange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      selectedVideoFile = file;
+      videoAction = 'replace';
+      videoFileName.textContent = file.name;
+      videoFileSize.textContent = formatBytes(file.size);
+      videoPlaceholder.style.display = 'none';
+      videoInfo.style.display = 'flex';
+
+      if (file.size > 50 * 1024 * 1024) {
+        videoWarning.style.display = 'block';
+      } else {
+        videoWarning.style.display = 'none';
+      }
+    }
+  };
+
+  removeVideoBtn.onclick = (e) => {
+    e.stopPropagation();
+    selectedVideoFile = null;
+    videoAction = 'remove';
+    videoFileInput.value = '';
+    videoPlaceholder.style.display = 'flex';
+    videoInfo.style.display = 'none';
+    videoWarning.style.display = 'none';
+  };
+
   if (exerciseId === 'new') {
     formTitle.textContent = "Nouvel Exercice";
     deleteBtn.style.display = 'none';
@@ -915,13 +1117,24 @@ async function setupExerciseForm(sessionId, exerciseId) {
         return;
       }
 
-      await dbActions.addExercise({
+      const hasVideo = (videoAction === 'replace' && selectedVideoFile !== null);
+
+      const newId = await dbActions.addExercise({
         title,
         description: desc,
         expectedReps,
         sessionIds: selectedSessionIds,
-        photo: currentPhotoBase64
+        photo: currentPhotoBase64,
+        hasVideo
       });
+
+      if (hasVideo && selectedVideoFile) {
+        showToast("Enregistrement de la vidéo...");
+        await dbActions.saveExerciseVideo(newId, selectedVideoFile, {
+          fileName: selectedVideoFile.name,
+          fileSize: selectedVideoFile.size
+        });
+      }
 
       showToast("Exercice créé !");
       const targetSessionId = selectedSessionIds.includes(Number(sessionId)) ? sessionId : selectedSessionIds[0];
@@ -966,6 +1179,18 @@ async function setupExerciseForm(sessionId, exerciseId) {
       photoContainer.classList.add('has-image');
     }
 
+    // Load existing video metadata if present
+    if (exercise.hasVideo) {
+      const videoRecord = await dbActions.getExerciseVideo(exerciseId);
+      if (videoRecord) {
+        videoFileName.textContent = videoRecord.fileName || 'Vidéo enregistrée';
+        videoFileSize.textContent = formatBytes(videoRecord.fileSize || 0);
+        videoPlaceholder.style.display = 'none';
+        videoInfo.style.display = 'flex';
+        videoAction = 'keep';
+      }
+    }
+
     // Handle exercise total deletion
     deleteBtn.onclick = async () => {
       const isMulti = exSessionIds.length > 1;
@@ -994,14 +1219,27 @@ async function setupExerciseForm(sessionId, exerciseId) {
         return;
       }
 
+      const willHaveVideo = (videoAction === 'replace' && selectedVideoFile !== null) || (videoAction === 'keep' && !!exercise.hasVideo);
+
       await dbActions.updateExercise({
         ...exercise,
         title,
         description: desc,
         expectedReps,
         sessionIds: selectedSessionIds,
-        photo: currentPhotoBase64
+        photo: currentPhotoBase64,
+        hasVideo: willHaveVideo
       });
+
+      if (videoAction === 'replace' && selectedVideoFile) {
+        showToast("Enregistrement de la vidéo...");
+        await dbActions.saveExerciseVideo(exerciseId, selectedVideoFile, {
+          fileName: selectedVideoFile.name,
+          fileSize: selectedVideoFile.size
+        });
+      } else if (videoAction === 'remove') {
+        await dbActions.deleteExerciseVideo(exerciseId);
+      }
 
       showToast("Exercice mis à jour !");
       const targetSessionId = selectedSessionIds.includes(Number(sessionId)) ? sessionId : selectedSessionIds[0];
@@ -1174,8 +1412,9 @@ window.addEventListener('DOMContentLoaded', async () => {
   window.addEventListener('offline', updateOnlineStatus);
   updateOnlineStatus();
 
-  // Initialize Export and Timer
+  // Initialize Export, Timer and Video Modal
   initTimer();
+  setupVideoModal();
   const exportBtn = document.getElementById('btn-export');
   if (exportBtn) {
     exportBtn.addEventListener('click', () => {
