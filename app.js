@@ -667,13 +667,30 @@ async function renderSessionsList() {
     card.onclick = () => { window.location.hash = `#/session/${session.id}`; };
     
     card.innerHTML = `
-      <h3 class="card-title">${escapeHTML(session.title)}</h3>
+      <div class="session-card-header">
+        <h3 class="card-title">${escapeHTML(session.title)}</h3>
+        <button type="button" class="btn-edit-session-card" title="Modifier la séance" aria-label="Modifier la séance">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+            <path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+          </svg>
+        </button>
+      </div>
       <p class="card-desc">${escapeHTML(session.description || 'Aucune description.')}</p>
       <div class="card-meta">
         <span>${exercises.length} exercice${exercises.length > 1 ? 's' : ''}</span>
         <span>Créé le ${formatDate(session.createdAt).split(' à ')[0]}</span>
       </div>
     `;
+
+    const editBtn = card.querySelector('.btn-edit-session-card');
+    if (editBtn) {
+      editBtn.onclick = (e) => {
+        e.stopPropagation();
+        window.location.hash = `#/session/${session.id}/edit`;
+      };
+    }
+
     grid.appendChild(card);
   }
   container.appendChild(grid);
@@ -689,81 +706,15 @@ async function renderSessionDetail(sessionId) {
   }
 
   // Set titles and action links
-  document.getElementById('session-detail-title').textContent = session.title;
-  document.getElementById('session-detail-desc').textContent = session.description || '';
+  const titleElem = document.getElementById('session-detail-title');
+  if (titleElem) titleElem.textContent = session.title;
   
-  document.getElementById('btn-edit-session').onclick = () => {
-    window.location.hash = `#/session/${sessionId}/edit`;
-  };
-  
-  document.getElementById('btn-add-exercise').onclick = () => {
-    window.location.hash = `#/session/${sessionId}/exercise/new/edit`;
-  };
-
-  // Setup Link Existing Exercise Modal
-  const linkModal = document.getElementById('modal-link-exercise');
-  const btnLinkExercise = document.getElementById('btn-link-exercise');
-  const btnCloseLinkModal = document.getElementById('btn-close-link-modal');
-  const btnCancelLinkModal = document.getElementById('btn-cancel-link-modal');
-  const btnConfirmLinkModal = document.getElementById('btn-confirm-link-modal');
-  const linkExercisesList = document.getElementById('link-exercises-list');
-
-  const closeLinkModal = () => {
-    linkModal.classList.remove('active');
-  };
-
-  btnLinkExercise.onclick = async () => {
-    const unlinkedExercises = await dbActions.getExercisesNotInSession(sessionId);
-    if (unlinkedExercises.length === 0) {
-      linkExercisesList.innerHTML = `
-        <div class="empty-state" style="padding: 24px 0;">
-          <p>Tous les exercices existants sont déjà associés à cette séance.</p>
-        </div>
-      `;
-      btnConfirmLinkModal.style.display = 'none';
-    } else {
-      btnConfirmLinkModal.style.display = 'block';
-      const allSessionsList = await dbActions.getAllSessions();
-      linkExercisesList.innerHTML = unlinkedExercises.map(ex => {
-        const exSessionIds = Array.isArray(ex.sessionIds) ? ex.sessionIds : (ex.sessionId != null ? [Number(ex.sessionId)] : []);
-        const sessionNames = exSessionIds.map(id => {
-          const s = allSessionsList.find(item => item.id === id);
-          return s ? s.title : `Séance #${id}`;
-        }).join(', ');
-
-        return `
-          <label class="modal-exercise-item">
-            <input type="checkbox" name="link-exercise-checkbox" value="${ex.id}">
-            <div class="modal-exercise-info">
-              <div class="modal-exercise-name">${escapeHTML(ex.title)}</div>
-              <div class="modal-exercise-meta">
-                ${ex.expectedReps ? escapeHTML(ex.expectedReps) + ' reps attendues' : 'Aucun objectif défini'}
-                ${sessionNames ? ` &bull; Présent dans : ${escapeHTML(sessionNames)}` : ''}
-              </div>
-            </div>
-          </label>
-        `;
-      }).join('');
-    }
-    linkModal.classList.add('active');
-  };
-
-  btnCloseLinkModal.onclick = closeLinkModal;
-  btnCancelLinkModal.onclick = closeLinkModal;
-
-  btnConfirmLinkModal.onclick = async () => {
-    const checkedBoxes = linkExercisesList.querySelectorAll('input[name="link-exercise-checkbox"]:checked');
-    const selectedIds = Array.from(checkedBoxes).map(cb => Number(cb.value));
-    if (selectedIds.length === 0) {
-      showToast("Veuillez cocher au moins un exercice");
-      return;
-    }
-
-    await dbActions.addExercisesToSession(selectedIds, sessionId);
-    closeLinkModal();
-    showToast(`${selectedIds.length} exercice${selectedIds.length > 1 ? 's ajoutés' : ' ajouté'} à la séance !`);
-    await renderSessionDetail(sessionId);
-  };
+  const addExerciseBtn = document.getElementById('btn-add-exercise');
+  if (addExerciseBtn) {
+    addExerciseBtn.onclick = () => {
+      window.location.hash = `#/session/${sessionId}/exercise/new/edit`;
+    };
+  }
 
   const container = document.getElementById('exercises-container');
   container.innerHTML = '<div class="empty-state">Chargement des exercices...</div>';
@@ -776,7 +727,7 @@ async function renderSessionDetail(sessionId) {
       <div class="empty-state">
         <div class="empty-state-icon">💪</div>
         <h3>Aucun exercice dans cette séance</h3>
-        <p>Ajoutez un nouvel exercice ou associez un exercice déjà existant !</p>
+        <p>Ajoutez votre premier exercice à l'aide du bouton ci-dessus !</p>
       </div>
     `;
     return;
@@ -803,9 +754,39 @@ async function renderSessionDetail(sessionId) {
     card.className = `exercise-card${hasTodayResult ? ' has-today-result' : ''}`;
     card.id = `exercise-card-${ex.id}`;
 
-    let imgHTML = '';
-    if (ex.photo) {
-      imgHTML = `<img src="${ex.photo}" class="exercise-img" alt="${escapeHTML(ex.title)}" loading="lazy">`;
+    // Exercise Media (Square photo and/or video play overlay)
+    let mediaHTML = '';
+    if (ex.photo || ex.hasVideo) {
+      let innerContent = '';
+      if (ex.photo) {
+        innerContent = `<img src="${ex.photo}" class="exercise-img" alt="${escapeHTML(ex.title)}" loading="lazy">`;
+      } else {
+        innerContent = `
+          <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.7;">
+            <polygon points="5 3 19 12 5 21 5 3"></polygon>
+          </svg>
+          <span style="font-size: 0.85rem; font-weight: 500;">Démonstration vidéo</span>
+        `;
+      }
+
+      let playOverlayHTML = '';
+      if (ex.hasVideo) {
+        playOverlayHTML = `
+          <button type="button" class="video-play-overlay" title="Lire la vidéo de démonstration" aria-label="Lire la vidéo">
+            <svg width="26" height="26" viewBox="0 0 24 24">
+              <polygon points="6 4 20 12 6 20 6 4"></polygon>
+            </svg>
+          </button>
+        `;
+      }
+
+      const wrapperClass = ex.photo ? 'exercise-media-wrapper' : 'exercise-media-wrapper video-only-placeholder';
+      mediaHTML = `
+        <div class="${wrapperClass}" ${ex.hasVideo ? `data-video-id="${ex.id}" data-video-title="${escapeHTML(ex.title)}"` : ''}>
+          ${innerContent}
+          ${playOverlayHTML}
+        </div>
+      `;
     }
 
     const exSessionIds = Array.isArray(ex.sessionIds) ? ex.sessionIds : (ex.sessionId != null ? [Number(ex.sessionId)] : []);
@@ -820,20 +801,8 @@ async function renderSessionDetail(sessionId) {
       sessionBadgesHTML = `<div class="exercise-sessions-badges">${chips}</div>`;
     }
 
-    let videoBtnHTML = '';
-    if (ex.hasVideo) {
-      videoBtnHTML = `
-        <button type="button" class="btn-watch-video" data-exercise-id="${ex.id}" data-exercise-title="${escapeHTML(ex.title)}">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
-            <polygon points="5 3 19 12 5 21 5 3"></polygon>
-          </svg>
-          Voir la vidéo
-        </button>
-      `;
-    }
-
     card.innerHTML = `
-      ${imgHTML}
+      ${mediaHTML}
       <div class="exercise-body">
         <div class="exercise-header">
           <div class="exercise-title">${escapeHTML(ex.title)}</div>
@@ -848,7 +817,6 @@ async function renderSessionDetail(sessionId) {
           </div>
         </div>
         ${sessionBadgesHTML}
-        ${videoBtnHTML}
         ${ex.description ? `<p class="exercise-desc">${escapeHTML(ex.description)}</p>` : ''}
         
         <div class="quick-input-section">
@@ -865,12 +833,15 @@ async function renderSessionDetail(sessionId) {
       </div>
     `;
 
-    // Watch video button click event
-    const watchBtn = card.querySelector('.btn-watch-video');
-    if (watchBtn) {
-      watchBtn.onclick = () => {
-        openVideoModal(ex.id, ex.title);
-      };
+    // Video play trigger on media wrapper
+    if (ex.hasVideo) {
+      const mediaWrapper = card.querySelector('.exercise-media-wrapper');
+      if (mediaWrapper) {
+        mediaWrapper.onclick = (e) => {
+          e.stopPropagation();
+          openVideoModal(ex.id, ex.title);
+        };
+      }
     }
 
     // Edit button click event
@@ -1013,6 +984,12 @@ async function setupExerciseForm(sessionId, exerciseId) {
   const removeVideoBtn = document.getElementById('btn-remove-video');
   const videoWarning = document.getElementById('video-size-warning');
 
+  // Existing Exercise Linker Controls
+  const sectionPickExisting = document.getElementById('section-pick-existing-exercise');
+  const selectExisting = document.getElementById('select-existing-exercise');
+  const btnLinkSelected = document.getElementById('btn-link-selected-exercise');
+  const dividerNew = document.getElementById('divider-new-exercise');
+
   // Clear inputs and previews
   titleInput.value = '';
   descInput.value = '';
@@ -1139,6 +1116,39 @@ async function setupExerciseForm(sessionId, exerciseId) {
     deleteBtn.style.display = 'none';
     removeSessionBtn.style.display = 'none';
 
+    // Populate existing exercises picker if there are exercises not yet in this session
+    if (sessionId !== 'new') {
+      const unlinkedExercises = await dbActions.getExercisesNotInSession(sessionId);
+      if (unlinkedExercises.length > 0) {
+        if (sectionPickExisting) sectionPickExisting.style.display = 'block';
+        if (dividerNew) dividerNew.style.display = 'flex';
+        if (selectExisting) {
+          selectExisting.innerHTML = '<option value="">-- Choisir un exercice existant (' + unlinkedExercises.length + ') --</option>' +
+            unlinkedExercises.map(ex => `<option value="${ex.id}">${escapeHTML(ex.title)}${ex.expectedReps ? ' (' + escapeHTML(ex.expectedReps) + ')' : ''}</option>`).join('');
+          selectExisting.value = '';
+        }
+        if (btnLinkSelected) {
+          btnLinkSelected.disabled = true;
+          selectExisting.onchange = () => {
+            btnLinkSelected.disabled = !selectExisting.value;
+          };
+          btnLinkSelected.onclick = async () => {
+            const chosenId = Number(selectExisting.value);
+            if (!chosenId) return;
+            await dbActions.addExercisesToSession([chosenId], sessionId);
+            showToast("Exercice ajouté à la séance !");
+            window.location.hash = `#/session/${sessionId}`;
+          };
+        }
+      } else {
+        if (sectionPickExisting) sectionPickExisting.style.display = 'none';
+        if (dividerNew) dividerNew.style.display = 'none';
+      }
+    } else {
+      if (sectionPickExisting) sectionPickExisting.style.display = 'none';
+      if (dividerNew) dividerNew.style.display = 'none';
+    }
+
     // Preselect current session if valid
     if (sessionId !== 'new') {
       setSelectedSessionIds([Number(sessionId)]);
@@ -1184,6 +1194,8 @@ async function setupExerciseForm(sessionId, exerciseId) {
   } else {
     formTitle.textContent = "Modifier l'Exercice";
     deleteBtn.style.display = 'block';
+    if (sectionPickExisting) sectionPickExisting.style.display = 'none';
+    if (dividerNew) dividerNew.style.display = 'none';
 
     const exercise = await dbActions.getExercise(exerciseId);
     if (!exercise) {
@@ -1341,7 +1353,7 @@ async function exportDatabase() {
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzC2XuHSzD_X7Agpnql1c_fvadv_M64QBjwSkMp15n71QHTguRoBh53kiAHIDeo2UCB/exec';
 
 async function backupToGoogleDrive() {
-  const btn = document.getElementById('btn-cloud-backup');
+  const btn = document.getElementById('btn-cloud-sync');
   if (btn) btn.classList.add('loading');
 
   try {
@@ -1399,7 +1411,7 @@ async function restoreFromGoogleDrive() {
 
   if (!confirm(confirmMsg)) return;
 
-  const btn = document.getElementById('btn-cloud-restore');
+  const btn = document.getElementById('btn-cloud-sync');
   if (btn) btn.classList.add('loading');
 
   try {
@@ -1566,17 +1578,51 @@ window.addEventListener('DOMContentLoaded', async () => {
   initTimer();
   setupVideoModal();
 
-  const backupBtn = document.getElementById('btn-cloud-backup');
-  if (backupBtn) {
-    backupBtn.addEventListener('click', () => {
+  // Cloud Sync Modal Setup
+  const cloudSyncBtn = document.getElementById('btn-cloud-sync');
+  const cloudSyncModal = document.getElementById('modal-cloud-sync');
+  const closeCloudModalBtn = document.getElementById('btn-close-cloud-modal');
+  const cancelCloudModalBtn = document.getElementById('btn-cancel-cloud-modal');
+  const modalBackupBtn = document.getElementById('btn-cloud-modal-backup');
+  const modalRestoreBtn = document.getElementById('btn-cloud-modal-restore');
+
+  const closeCloudSyncModal = () => {
+    if (cloudSyncModal) cloudSyncModal.classList.remove('active');
+  };
+
+  if (cloudSyncBtn && cloudSyncModal) {
+    cloudSyncBtn.addEventListener('click', () => {
+      if ('vibrate' in navigator) navigator.vibrate(40);
+      cloudSyncModal.classList.add('active');
+    });
+
+    if (closeCloudModalBtn) closeCloudModalBtn.addEventListener('click', closeCloudSyncModal);
+    if (cancelCloudModalBtn) cancelCloudModalBtn.addEventListener('click', closeCloudSyncModal);
+
+    cloudSyncModal.addEventListener('click', (e) => {
+      if (e.target === cloudSyncModal) {
+        closeCloudSyncModal();
+      }
+    });
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && cloudSyncModal.classList.contains('active')) {
+        closeCloudSyncModal();
+      }
+    });
+  }
+
+  if (modalBackupBtn) {
+    modalBackupBtn.addEventListener('click', () => {
+      closeCloudSyncModal();
       if ('vibrate' in navigator) navigator.vibrate(50);
       backupToGoogleDrive();
     });
   }
 
-  const restoreBtn = document.getElementById('btn-cloud-restore');
-  if (restoreBtn) {
-    restoreBtn.addEventListener('click', () => {
+  if (modalRestoreBtn) {
+    modalRestoreBtn.addEventListener('click', () => {
+      closeCloudSyncModal();
       if ('vibrate' in navigator) navigator.vibrate(50);
       restoreFromGoogleDrive();
     });

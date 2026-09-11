@@ -24,18 +24,9 @@
       <span class="app-title">GymTracker</span>
     </div>
     <div class="header-right">
-      <button id="btn-cloud-backup" class="btn-header-action" title="Sauvegarder sur Google Drive">
+      <button id="btn-cloud-sync" class="btn-header-action" title="Synchronisation Google Drive">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"></path>
-          <polyline points="12 11 12 17"></polyline>
-          <polyline points="9 14 12 11 15 14"></polyline>
-        </svg>
-      </button>
-      <button id="btn-cloud-restore" class="btn-header-action" title="Restaurer depuis Google Drive">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"></path>
-          <polyline points="12 17 12 11"></polyline>
-          <polyline points="9 14 12 17 15 14"></polyline>
         </svg>
       </button>
       <div id="timer-btn" class="timer-badge">80s</div>
@@ -66,41 +57,23 @@
 
     <!-- 2. VIEW: SESSION DETAIL & EXERCISES -->
     <section id="view-session-detail" class="view">
-      <a href="#/" class="back-link">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="19" y1="12" x2="5" y2="12"></line>
-          <polyline points="12 19 5 12 12 5"></polyline>
-        </svg>
-        Retour aux séances
-      </a>
-      
-      <div class="details-header">
-        <h2 id="session-detail-title">Nom de la Séance</h2>
-        <p id="session-detail-desc" class="subtitle">Description de la séance</p>
-        
-        <div class="details-actions">
-          <button id="btn-edit-session" class="btn btn-secondary btn-sm">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-              <path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+      <div class="session-detail-header-bar">
+        <div class="session-detail-title-group">
+          <a href="#/" class="btn-back-arrow" title="Retour aux séances">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="19" y1="12" x2="5" y2="12"></line>
+              <polyline points="12 19 5 12 12 5"></polyline>
             </svg>
-            Modifier Séance
-          </button>
-          <button id="btn-link-exercise" class="btn btn-secondary btn-sm" title="Ajouter un exercice déjà existant">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
-              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
-            </svg>
-            Exercice existant
-          </button>
-          <button id="btn-add-exercise" class="btn btn-primary btn-sm">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="12" y1="5" x2="12" y2="19"></line>
-              <line x1="5" y1="12" x2="19" y2="12"></line>
-            </svg>
-            Nouvel Exercice
-          </button>
+          </a>
+          <h2 id="session-detail-title">Nom de la Séance</h2>
         </div>
+        <button id="btn-add-exercise" class="btn btn-primary btn-sm">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+          <span>Nouvel Exercice</span>
+        </button>
       </div>
 
       <div id="exercises-container">
@@ -152,6 +125,27 @@
       <h2 id="exercise-form-heading">Nouvel Exercice</h2>
       <p class="subtitle">Ajoutez les détails de l'exercice et associez-le à une ou plusieurs séances.</p>
       
+      <!-- Existing Exercise Quick Linker (Shown only on new exercise) -->
+      <div id="section-pick-existing-exercise" class="existing-exercise-picker-box">
+        <div class="picker-box-header">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+          </svg>
+          <span>Sélectionner un exercice existant</span>
+        </div>
+        <p class="picker-box-desc">Ajoutez un exercice déjà créé dans une autre séance :</p>
+        <div class="picker-box-actions">
+          <select id="select-existing-exercise" class="form-select">
+            <option value="">-- Choisir un exercice existant --</option>
+          </select>
+          <button type="button" id="btn-link-selected-exercise" class="btn btn-secondary btn-sm" disabled>Ajouter à la séance</button>
+        </div>
+      </div>
+      <div id="divider-new-exercise" class="form-divider">
+        <span>OU CRÉER UN NOUVEL EXERCICE</span>
+      </div>
+
       <form id="exercise-edit-form">
         <div class="form-group">
           <label for="exercise-title">Titre de l'exercice *</label>
@@ -232,20 +226,52 @@
       </form>
     </section>
 
-    <!-- 5. MODAL: LINK EXISTING EXERCISE -->
-    <div id="modal-link-exercise" class="modal-overlay">
+    <!-- 5. MODAL: CLOUD SYNC -->
+    <div id="modal-cloud-sync" class="modal-overlay">
       <div class="modal-card">
         <div class="modal-header">
-          <h3 class="modal-title">Ajouter des exercices existants</h3>
-          <button id="btn-close-link-modal" class="btn-close-modal" type="button" aria-label="Fermer">&times;</button>
+          <div class="modal-title-with-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--accent);">
+              <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"></path>
+            </svg>
+            <h3 class="modal-title">Synchronisation Drive</h3>
+          </div>
+          <button id="btn-close-cloud-modal" class="btn-close-modal" type="button" aria-label="Fermer">&times;</button>
         </div>
-        <p class="subtitle" style="margin-bottom: 16px;">Sélectionnez les exercices déjà créés à inclure dans cette séance :</p>
-        <div id="link-exercises-list" class="link-exercises-list">
-          <!-- Dynamically populated -->
+        <p class="subtitle" style="margin-bottom: 20px;">Gérez la sauvegarde et la restauration de vos données avec Google Drive.</p>
+        
+        <div class="cloud-sync-options">
+          <button id="btn-cloud-modal-backup" type="button" class="cloud-action-card">
+            <div class="cloud-card-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"></path>
+                <polyline points="12 11 12 17"></polyline>
+                <polyline points="9 14 12 11 15 14"></polyline>
+              </svg>
+            </div>
+            <div class="cloud-card-content">
+              <div class="cloud-card-title">Sauvegarder sur Google Drive</div>
+              <div class="cloud-card-desc">Exporte l'ensemble de vos séances et historiques vers le Drive</div>
+            </div>
+          </button>
+
+          <button id="btn-cloud-modal-restore" type="button" class="cloud-action-card">
+            <div class="cloud-card-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"></path>
+                <polyline points="12 17 12 11"></polyline>
+                <polyline points="9 14 12 17 15 14"></polyline>
+              </svg>
+            </div>
+            <div class="cloud-card-content">
+              <div class="cloud-card-title">Restaurer depuis Google Drive</div>
+              <div class="cloud-card-desc">Récupère et applique la sauvegarde la plus récente</div>
+            </div>
+          </button>
         </div>
-        <div class="modal-actions">
-          <button id="btn-cancel-link-modal" type="button" class="btn btn-secondary">Annuler</button>
-          <button id="btn-confirm-link-modal" type="button" class="btn btn-primary">Ajouter à la séance</button>
+
+        <div class="modal-actions" style="margin-top: 20px;">
+          <button id="btn-cancel-cloud-modal" type="button" class="btn btn-secondary" style="width: 100%;">Fermer</button>
         </div>
       </div>
     </div>
