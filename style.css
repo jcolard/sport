@@ -623,6 +623,16 @@ textarea {
   background-color: var(--bg-tertiary);
 }
 
+.btn-header-action.loading svg {
+  animation: spin-loading 1s linear infinite;
+  color: var(--accent);
+}
+
+@keyframes spin-loading {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
 .timer-badge {
   font-size: 0.9rem;
   font-weight: 700;

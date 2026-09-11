@@ -377,6 +377,47 @@ const dbActions = {
       const request = store.getAll();
       request.onsuccess = () => resolve(request.result || []);
     });
+  },
+
+  replaceAllData(backupData, localMediaMap) {
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(['sessions', 'exercises', 'results'], 'readwrite');
+      const sessionsStore = transaction.objectStore('sessions');
+      const exercisesStore = transaction.objectStore('exercises');
+      const resultsStore = transaction.objectStore('results');
+
+      sessionsStore.clear();
+      exercisesStore.clear();
+      resultsStore.clear();
+
+      // Insert sessions
+      for (const s of (backupData.sessions || [])) {
+        sessionsStore.put(s);
+      }
+
+      // Insert exercises, preserving local media where available
+      for (const ex of (backupData.exercises || [])) {
+        const localMedia = localMediaMap ? localMediaMap.get(ex.id) : null;
+        const photo = ex.photo || (localMedia ? localMedia.photo : null);
+        const hasVideo = ex.hasVideo != null ? ex.hasVideo : (localMedia ? localMedia.hasVideo : false);
+        const sessionIds = Array.isArray(ex.sessionIds) ? ex.sessionIds : (ex.sessionId != null ? [Number(ex.sessionId)] : []);
+
+        exercisesStore.put({
+          ...ex,
+          sessionIds,
+          photo,
+          hasVideo
+        });
+      }
+
+      // Insert results
+      for (const r of (backupData.results || [])) {
+        resultsStore.put(r);
+      }
+
+      transaction.oncomplete = () => resolve(true);
+      transaction.onerror = (e) => reject(e);
+    });
   }
 };
 
@@ -1296,6 +1337,115 @@ async function exportDatabase() {
   }
 }
 
+// --- Google Drive Backup & Restore via Apps Script ---
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzC2XuHSzD_X7Agpnql1c_fvadv_M64QBjwSkMp15n71QHTguRoBh53kiAHIDeo2UCB/exec';
+
+async function backupToGoogleDrive() {
+  const btn = document.getElementById('btn-cloud-backup');
+  if (btn) btn.classList.add('loading');
+
+  try {
+    showToast("Sauvegarde sur Google Drive en cours...");
+
+    const sessions = await dbActions.getAllSessions();
+    const exercises = await dbActions.getAllExercises();
+    const results = await dbActions.getAllResults();
+
+    // Strip out base64 photos to keep backup light and clean
+    const exercisesWithoutPhotos = exercises.map(ex => {
+      const { photo, ...rest } = ex;
+      const sessionIds = Array.isArray(ex.sessionIds) ? ex.sessionIds : (ex.sessionId != null ? [Number(ex.sessionId)] : []);
+      return { ...rest, sessionIds };
+    });
+
+    const backupPayload = {
+      sessions,
+      exercises: exercisesWithoutPhotos,
+      results,
+      exportedAt: new Date().toISOString()
+    };
+
+    const response = await fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'text/plain;charset=utf-8'
+      },
+      body: JSON.stringify({
+        action: 'backup',
+        data: backupPayload
+      })
+    });
+
+    const res = await response.json();
+    if (res.success) {
+      showToast(`Sauvegarde Drive réussie ! (${res.fileName || ''})`);
+      if ('vibrate' in navigator) navigator.vibrate([80, 40, 80]);
+    } else {
+      showToast(res.message || "Erreur lors de la sauvegarde sur Drive.");
+    }
+  } catch (err) {
+    console.error("Backup error:", err);
+    showToast("Échec de la connexion à Google Drive.");
+  } finally {
+    if (btn) btn.classList.remove('loading');
+  }
+}
+
+async function restoreFromGoogleDrive() {
+  const confirmMsg = 
+    "Voulez-vous vraiment restaurer les données depuis Google Drive ?\n\n" +
+    "⚠️ Vos séances, exercices et historiques locaux actuels seront remplacés par la dernière sauvegarde du Drive.\n" +
+    "(Les photos et vidéos déjà enregistrées sur cet appareil seront conservées dans la mesure du possible).";
+
+  if (!confirm(confirmMsg)) return;
+
+  const btn = document.getElementById('btn-cloud-restore');
+  if (btn) btn.classList.add('loading');
+
+  try {
+    showToast("Récupération de la dernière sauvegarde Drive...");
+
+    const response = await fetch(`${APPS_SCRIPT_URL}?action=restore`);
+    const res = await response.json();
+
+    if (!res.success || !res.data) {
+      showToast(res.message || "Aucune sauvegarde valide trouvée sur Drive.");
+      return;
+    }
+
+    const backup = res.data;
+    if (!backup.sessions || !backup.exercises) {
+      showToast("Fichier de sauvegarde Drive invalide.");
+      return;
+    }
+
+    showToast("Restauration locale en cours...");
+
+    // Map existing local media (photos & video flags)
+    const localExercises = await dbActions.getAllExercises();
+    const localMediaMap = new Map();
+    for (const le of localExercises) {
+      if (le.photo || le.hasVideo) {
+        localMediaMap.set(le.id, { photo: le.photo, hasVideo: le.hasVideo });
+      }
+    }
+
+    await dbActions.replaceAllData(backup, localMediaMap);
+
+    showToast(`Restauration réussie ! (${res.fileName || ''})`);
+    if ('vibrate' in navigator) navigator.vibrate([150, 50, 150]);
+
+    // Refresh route/view
+    await router.handleRoute();
+
+  } catch (err) {
+    console.error("Restore error:", err);
+    showToast("Échec de la récupération depuis Google Drive.");
+  } finally {
+    if (btn) btn.classList.remove('loading');
+  }
+}
+
 // --- Agile Timer Logic ---
 let timerInterval = null;
 let timerEndTime = 0;
@@ -1412,16 +1562,23 @@ window.addEventListener('DOMContentLoaded', async () => {
   window.addEventListener('offline', updateOnlineStatus);
   updateOnlineStatus();
 
-  // Initialize Export, Timer and Video Modal
+  // Initialize Timer, Video Modal, and Cloud Sync
   initTimer();
   setupVideoModal();
-  const exportBtn = document.getElementById('btn-export');
-  if (exportBtn) {
-    exportBtn.addEventListener('click', () => {
-      if ('vibrate' in navigator) {
-        navigator.vibrate(50);
-      }
-      exportDatabase();
+
+  const backupBtn = document.getElementById('btn-cloud-backup');
+  if (backupBtn) {
+    backupBtn.addEventListener('click', () => {
+      if ('vibrate' in navigator) navigator.vibrate(50);
+      backupToGoogleDrive();
+    });
+  }
+
+  const restoreBtn = document.getElementById('btn-cloud-restore');
+  if (restoreBtn) {
+    restoreBtn.addEventListener('click', () => {
+      if ('vibrate' in navigator) navigator.vibrate(50);
+      restoreFromGoogleDrive();
     });
   }
 
