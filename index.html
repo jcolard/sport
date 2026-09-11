@@ -79,12 +79,19 @@
             </svg>
             Modifier Séance
           </button>
+          <button id="btn-link-exercise" class="btn btn-secondary btn-sm" title="Ajouter un exercice déjà existant">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+            </svg>
+            Exercice existant
+          </button>
           <button id="btn-add-exercise" class="btn btn-primary btn-sm">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <line x1="12" y1="5" x2="12" y2="19"></line>
               <line x1="5" y1="12" x2="19" y2="12"></line>
             </svg>
-            Ajouter Exercice
+            Nouvel Exercice
           </button>
         </div>
       </div>
@@ -136,7 +143,7 @@
       </button>
       
       <h2 id="exercise-form-heading">Nouvel Exercice</h2>
-      <p class="subtitle">Ajoutez les détails de l'exercice et la séance associée.</p>
+      <p class="subtitle">Ajoutez les détails de l'exercice et associez-le à une ou plusieurs séances.</p>
       
       <form id="exercise-edit-form">
         <div class="form-group">
@@ -145,10 +152,11 @@
         </div>
 
         <div class="form-group">
-          <label for="exercise-session-select">Séance associée *</label>
-          <select id="exercise-session-select" required>
+          <label>Séances associées *</label>
+          <div id="exercise-sessions-selector" class="sessions-selector-grid">
             <!-- Loaded dynamically -->
-          </select>
+          </div>
+          <p id="exercise-sessions-error" class="form-error-msg" style="display: none;">Veuillez sélectionner au moins une séance.</p>
         </div>
         
         <div class="form-group">
@@ -178,10 +186,29 @@
         
         <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 30px;">
           <button type="submit" class="btn btn-primary">Enregistrer l'exercice</button>
+          <button type="button" id="btn-remove-exercise-session" class="btn btn-warning" style="display: none;">Retirer de cette séance uniquement</button>
           <button type="button" id="btn-delete-exercise-form" class="btn btn-danger">Supprimer cet exercice</button>
         </div>
       </form>
     </section>
+
+    <!-- 5. MODAL: LINK EXISTING EXERCISE -->
+    <div id="modal-link-exercise" class="modal-overlay">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3 class="modal-title">Ajouter des exercices existants</h3>
+          <button id="btn-close-link-modal" class="btn-close-modal" type="button" aria-label="Fermer">&times;</button>
+        </div>
+        <p class="subtitle" style="margin-bottom: 16px;">Sélectionnez les exercices déjà créés à inclure dans cette séance :</p>
+        <div id="link-exercises-list" class="link-exercises-list">
+          <!-- Dynamically populated -->
+        </div>
+        <div class="modal-actions">
+          <button id="btn-cancel-link-modal" type="button" class="btn btn-secondary">Annuler</button>
+          <button id="btn-confirm-link-modal" type="button" class="btn btn-primary">Ajouter à la séance</button>
+        </div>
+      </div>
+    </div>
 
   </main>
 

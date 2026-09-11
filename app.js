@@ -1,6 +1,6 @@
 // --- Database Config & Helper ---
 const DB_NAME = 'sport_pwa_db';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 let db = null;
 
 // Initialize IndexedDB
@@ -20,6 +20,7 @@ function initDB() {
 
     request.onupgradeneeded = (e) => {
       const dbInstance = e.target.result;
+      const oldVersion = e.oldVersion;
       
       // Store 1: Séances (Sessions)
       if (!dbInstance.objectStoreNames.contains('sessions')) {
@@ -27,15 +28,38 @@ function initDB() {
       }
 
       // Store 2: Exercices (Exercises)
+      let exerciseStore;
       if (!dbInstance.objectStoreNames.contains('exercises')) {
-        const exerciseStore = dbInstance.createObjectStore('exercises', { keyPath: 'id', autoIncrement: true });
-        exerciseStore.createIndex('sessionId', 'sessionId', { unique: false });
+        exerciseStore = dbInstance.createObjectStore('exercises', { keyPath: 'id', autoIncrement: true });
+      } else {
+        exerciseStore = e.target.transaction.objectStore('exercises');
+      }
+
+      // MultiEntry index on sessionIds
+      if (!exerciseStore.indexNames.contains('sessionIds')) {
+        exerciseStore.createIndex('sessionIds', 'sessionIds', { multiEntry: true, unique: false });
       }
 
       // Store 3: Résultats (Results)
       if (!dbInstance.objectStoreNames.contains('results')) {
         const resultStore = dbInstance.createObjectStore('results', { keyPath: 'id', autoIncrement: true });
         resultStore.createIndex('exerciseId', 'exerciseId', { unique: false });
+      }
+
+      // Migration: Convert legacy sessionId to sessionIds array
+      if (oldVersion < 2 && exerciseStore) {
+        const cursorReq = exerciseStore.openCursor();
+        cursorReq.onsuccess = (ev) => {
+          const cursor = ev.target.result;
+          if (cursor) {
+            const ex = cursor.value;
+            if (!Array.isArray(ex.sessionIds)) {
+              ex.sessionIds = ex.sessionId != null ? [Number(ex.sessionId)] : [];
+              cursor.update(ex);
+            }
+            cursor.continue();
+          }
+        };
       }
     };
   });
@@ -78,15 +102,25 @@ const dbActions = {
   },
   deleteSession(sessionId) {
     return new Promise(async (resolve) => {
-      // Deleting a session should also clean up its exercises and results
-      const exercises = await this.getExercisesBySession(sessionId);
+      const targetSessionId = Number(sessionId);
+      // Clean up session reference from exercises without deleting exercises shared with other sessions
+      const exercises = await this.getExercisesBySession(targetSessionId);
       for (const ex of exercises) {
-        await this.deleteExercise(ex.id);
+        const currentIds = Array.isArray(ex.sessionIds) ? ex.sessionIds : (ex.sessionId != null ? [Number(ex.sessionId)] : []);
+        const remaining = currentIds.filter(id => id !== targetSessionId);
+        if (remaining.length === 0) {
+          await this.deleteExercise(ex.id);
+        } else {
+          await this.updateExercise({
+            ...ex,
+            sessionIds: remaining
+          });
+        }
       }
       
       const transaction = db.transaction(['sessions'], 'readwrite');
       const store = transaction.objectStore('sessions');
-      const request = store.delete(Number(sessionId));
+      const request = store.delete(targetSessionId);
       request.onsuccess = () => resolve(true);
     });
   },
@@ -96,42 +130,140 @@ const dbActions = {
     return new Promise((resolve) => {
       const transaction = db.transaction(['exercises'], 'readonly');
       const store = transaction.objectStore('exercises');
-      const index = store.index('sessionId');
-      const request = index.getAll(Number(sessionId));
-      request.onsuccess = () => resolve(request.result || []);
+      const idNum = Number(sessionId);
+
+      if (store.indexNames.contains('sessionIds')) {
+        try {
+          const index = store.index('sessionIds');
+          const request = index.getAll(idNum);
+          request.onsuccess = () => {
+            const list = request.result || [];
+            if (list.length > 0) {
+              resolve(list);
+            } else {
+              this.fallbackFilterExercises(store, idNum, resolve);
+            }
+          };
+          request.onerror = () => this.fallbackFilterExercises(store, idNum, resolve);
+          return;
+        } catch (err) {}
+      }
+      this.fallbackFilterExercises(store, idNum, resolve);
     });
   },
+
+  fallbackFilterExercises(store, idNum, resolve) {
+    const request = store.getAll();
+    request.onsuccess = () => {
+      const all = request.result || [];
+      const filtered = all.filter(ex => {
+        if (Array.isArray(ex.sessionIds)) {
+          return ex.sessionIds.includes(idNum);
+        }
+        return Number(ex.sessionId) === idNum;
+      });
+      resolve(filtered);
+    };
+    request.onerror = () => resolve([]);
+  },
+
   getExercise(id) {
     return new Promise((resolve) => {
       const transaction = db.transaction(['exercises'], 'readonly');
       const store = transaction.objectStore('exercises');
       const request = store.get(Number(id));
-      request.onsuccess = () => resolve(request.result);
+      request.onsuccess = () => {
+        const ex = request.result;
+        if (ex && !Array.isArray(ex.sessionIds) && ex.sessionId != null) {
+          ex.sessionIds = [Number(ex.sessionId)];
+        }
+        resolve(ex);
+      };
     });
   },
+
   addExercise(exercise) {
     return new Promise((resolve) => {
       const transaction = db.transaction(['exercises'], 'readwrite');
       const store = transaction.objectStore('exercises');
+      const sessionIds = (exercise.sessionIds || []).map(Number);
       const request = store.add({ 
         ...exercise, 
-        sessionId: Number(exercise.sessionId),
+        sessionIds,
+        sessionId: sessionIds[0] || null,
         createdAt: new Date().toISOString() 
       });
       request.onsuccess = () => resolve(request.result);
     });
   },
+
   updateExercise(exercise) {
     return new Promise((resolve) => {
       const transaction = db.transaction(['exercises'], 'readwrite');
       const store = transaction.objectStore('exercises');
+      const sessionIds = (exercise.sessionIds || []).map(Number);
       const request = store.put({
         ...exercise,
-        sessionId: Number(exercise.sessionId)
+        sessionIds,
+        sessionId: sessionIds[0] || null
       });
       request.onsuccess = () => resolve(request.result);
     });
   },
+
+  removeExerciseFromSession(exerciseId, sessionId) {
+    return new Promise(async (resolve) => {
+      const exercise = await this.getExercise(exerciseId);
+      if (!exercise) return resolve(false);
+
+      const targetSessionId = Number(sessionId);
+      const currentIds = Array.isArray(exercise.sessionIds) ? exercise.sessionIds : (exercise.sessionId != null ? [Number(exercise.sessionId)] : []);
+      const remaining = currentIds.filter(id => id !== targetSessionId);
+
+      if (remaining.length === 0) {
+        await this.deleteExercise(exerciseId);
+      } else {
+        await this.updateExercise({
+          ...exercise,
+          sessionIds: remaining
+        });
+      }
+      resolve(true);
+    });
+  },
+
+  getExercisesNotInSession(sessionId) {
+    return new Promise(async (resolve) => {
+      const targetSessionId = Number(sessionId);
+      const allExercises = await this.getAllExercises();
+      const notInSession = allExercises.filter(ex => {
+        const ids = Array.isArray(ex.sessionIds) ? ex.sessionIds : (ex.sessionId != null ? [Number(ex.sessionId)] : []);
+        return !ids.includes(targetSessionId);
+      });
+      resolve(notInSession);
+    });
+  },
+
+  addExercisesToSession(exerciseIds, sessionId) {
+    return new Promise(async (resolve) => {
+      const targetSessionId = Number(sessionId);
+      for (const exId of exerciseIds) {
+        const exercise = await this.getExercise(exId);
+        if (exercise) {
+          const currentIds = Array.isArray(exercise.sessionIds) ? exercise.sessionIds : (exercise.sessionId != null ? [Number(exercise.sessionId)] : []);
+          if (!currentIds.includes(targetSessionId)) {
+            currentIds.push(targetSessionId);
+            await this.updateExercise({
+              ...exercise,
+              sessionIds: currentIds
+            });
+          }
+        }
+      }
+      resolve(true);
+    });
+  },
+
   deleteExercise(id) {
     return new Promise(async (resolve) => {
       // Deleting an exercise should also clean up its results
@@ -398,17 +530,83 @@ async function renderSessionDetail(sessionId) {
     window.location.hash = `#/session/${sessionId}/exercise/new/edit`;
   };
 
+  // Setup Link Existing Exercise Modal
+  const linkModal = document.getElementById('modal-link-exercise');
+  const btnLinkExercise = document.getElementById('btn-link-exercise');
+  const btnCloseLinkModal = document.getElementById('btn-close-link-modal');
+  const btnCancelLinkModal = document.getElementById('btn-cancel-link-modal');
+  const btnConfirmLinkModal = document.getElementById('btn-confirm-link-modal');
+  const linkExercisesList = document.getElementById('link-exercises-list');
+
+  const closeLinkModal = () => {
+    linkModal.classList.remove('active');
+  };
+
+  btnLinkExercise.onclick = async () => {
+    const unlinkedExercises = await dbActions.getExercisesNotInSession(sessionId);
+    if (unlinkedExercises.length === 0) {
+      linkExercisesList.innerHTML = `
+        <div class="empty-state" style="padding: 24px 0;">
+          <p>Tous les exercices existants sont déjà associés à cette séance.</p>
+        </div>
+      `;
+      btnConfirmLinkModal.style.display = 'none';
+    } else {
+      btnConfirmLinkModal.style.display = 'block';
+      const allSessionsList = await dbActions.getAllSessions();
+      linkExercisesList.innerHTML = unlinkedExercises.map(ex => {
+        const exSessionIds = Array.isArray(ex.sessionIds) ? ex.sessionIds : (ex.sessionId != null ? [Number(ex.sessionId)] : []);
+        const sessionNames = exSessionIds.map(id => {
+          const s = allSessionsList.find(item => item.id === id);
+          return s ? s.title : `Séance #${id}`;
+        }).join(', ');
+
+        return `
+          <label class="modal-exercise-item">
+            <input type="checkbox" name="link-exercise-checkbox" value="${ex.id}">
+            <div class="modal-exercise-info">
+              <div class="modal-exercise-name">${escapeHTML(ex.title)}</div>
+              <div class="modal-exercise-meta">
+                ${ex.expectedReps ? escapeHTML(ex.expectedReps) + ' reps attendues' : 'Aucun objectif défini'}
+                ${sessionNames ? ` &bull; Présent dans : ${escapeHTML(sessionNames)}` : ''}
+              </div>
+            </div>
+          </label>
+        `;
+      }).join('');
+    }
+    linkModal.classList.add('active');
+  };
+
+  btnCloseLinkModal.onclick = closeLinkModal;
+  btnCancelLinkModal.onclick = closeLinkModal;
+
+  btnConfirmLinkModal.onclick = async () => {
+    const checkedBoxes = linkExercisesList.querySelectorAll('input[name="link-exercise-checkbox"]:checked');
+    const selectedIds = Array.from(checkedBoxes).map(cb => Number(cb.value));
+    if (selectedIds.length === 0) {
+      showToast("Veuillez cocher au moins un exercice");
+      return;
+    }
+
+    await dbActions.addExercisesToSession(selectedIds, sessionId);
+    closeLinkModal();
+    showToast(`${selectedIds.length} exercice${selectedIds.length > 1 ? 's ajoutés' : ' ajouté'} à la séance !`);
+    await renderSessionDetail(sessionId);
+  };
+
   const container = document.getElementById('exercises-container');
   container.innerHTML = '<div class="empty-state">Chargement des exercices...</div>';
 
   const exercises = await dbActions.getExercisesBySession(sessionId);
+  const allSessions = await dbActions.getAllSessions();
 
   if (exercises.length === 0) {
     container.innerHTML = `
       <div class="empty-state">
         <div class="empty-state-icon">💪</div>
         <h3>Aucun exercice dans cette séance</h3>
-        <p>Ajoutez des exercices pour commencer à suivre votre entraînement !</p>
+        <p>Ajoutez un nouvel exercice ou associez un exercice déjà existant !</p>
       </div>
     `;
     return;
@@ -440,6 +638,18 @@ async function renderSessionDetail(sessionId) {
       imgHTML = `<img src="${ex.photo}" class="exercise-img" alt="${escapeHTML(ex.title)}" loading="lazy">`;
     }
 
+    const exSessionIds = Array.isArray(ex.sessionIds) ? ex.sessionIds : (ex.sessionId != null ? [Number(ex.sessionId)] : []);
+    let sessionBadgesHTML = '';
+    if (exSessionIds.length > 1) {
+      const chips = exSessionIds.map(sId => {
+        const sObj = allSessions.find(s => s.id === sId);
+        const name = sObj ? sObj.title : `Séance #${sId}`;
+        const isCurrent = sId === Number(sessionId);
+        return `<span class="session-chip${isCurrent ? ' current' : ''}">${escapeHTML(name)}</span>`;
+      }).join('');
+      sessionBadgesHTML = `<div class="exercise-sessions-badges">${chips}</div>`;
+    }
+
     card.innerHTML = `
       ${imgHTML}
       <div class="exercise-body">
@@ -455,7 +665,7 @@ async function renderSessionDetail(sessionId) {
             </button>
           </div>
         </div>
-        
+        ${sessionBadgesHTML}
         ${ex.description ? `<p class="exercise-desc">${escapeHTML(ex.description)}</p>` : ''}
         
         <div class="quick-input-section">
@@ -593,10 +803,12 @@ async function setupExerciseForm(sessionId, exerciseId) {
   const titleInput = document.getElementById('exercise-title');
   const descInput = document.getElementById('exercise-desc');
   const repsInput = document.getElementById('exercise-reps-input');
-  const sessionSelect = document.getElementById('exercise-session-select');
+  const sessionsSelector = document.getElementById('exercise-sessions-selector');
+  const sessionsError = document.getElementById('exercise-sessions-error');
   const fileInput = document.getElementById('exercise-photo-file');
   const photoPreview = document.getElementById('exercise-photo-preview');
   const photoContainer = document.getElementById('exercise-photo-container');
+  const removeSessionBtn = document.getElementById('btn-remove-exercise-session');
   const deleteBtn = document.getElementById('btn-delete-exercise-form');
   const formTitle = document.getElementById('exercise-form-heading');
 
@@ -608,6 +820,9 @@ async function setupExerciseForm(sessionId, exerciseId) {
   photoPreview.src = '';
   photoPreview.classList.remove('active');
   photoContainer.classList.remove('has-image');
+  sessionsError.style.display = 'none';
+  removeSessionBtn.style.display = 'none';
+  deleteBtn.style.display = 'none';
   
   let currentPhotoBase64 = '';
 
@@ -616,11 +831,44 @@ async function setupExerciseForm(sessionId, exerciseId) {
     window.location.hash = sessionId === 'new' ? '#/' : `#/session/${sessionId}`;
   };
 
-  // Populate workout sessions dropdown
+  // Populate workout sessions checkboxes
   const allSessions = await dbActions.getAllSessions();
-  sessionSelect.innerHTML = allSessions.map(s => `
-    <option value="${s.id}" ${s.id === Number(sessionId) ? 'selected' : ''}>${escapeHTML(s.title)}</option>
+  sessionsSelector.innerHTML = allSessions.map(s => `
+    <label class="session-checkbox-label" id="session-label-${s.id}">
+      <input type="checkbox" name="exercise-sessions" value="${s.id}">
+      <span class="session-checkbox-title">${escapeHTML(s.title)}</span>
+    </label>
   `).join('');
+
+  // Add change listeners to toggle checked styling
+  sessionsSelector.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+    cb.addEventListener('change', () => {
+      const label = cb.closest('.session-checkbox-label');
+      if (label) {
+        label.classList.toggle('checked', cb.checked);
+      }
+      if (sessionsSelector.querySelectorAll('input[type="checkbox"]:checked').length > 0) {
+        sessionsError.style.display = 'none';
+      }
+    });
+  });
+
+  const getSelectedSessionIds = () => {
+    const checked = sessionsSelector.querySelectorAll('input[name="exercise-sessions"]:checked');
+    return Array.from(checked).map(cb => Number(cb.value));
+  };
+
+  const setSelectedSessionIds = (ids) => {
+    const idSet = new Set((ids || []).map(Number));
+    sessionsSelector.querySelectorAll('input[name="exercise-sessions"]').forEach(cb => {
+      const isChecked = idSet.has(Number(cb.value));
+      cb.checked = isChecked;
+      const label = cb.closest('.session-checkbox-label');
+      if (label) {
+        label.classList.toggle('checked', isChecked);
+      }
+    });
+  };
 
   // Setup Image Picker Trigger
   photoContainer.onclick = () => {
@@ -646,25 +894,37 @@ async function setupExerciseForm(sessionId, exerciseId) {
   if (exerciseId === 'new') {
     formTitle.textContent = "Nouvel Exercice";
     deleteBtn.style.display = 'none';
+    removeSessionBtn.style.display = 'none';
+
+    // Preselect current session if valid
+    if (sessionId !== 'new') {
+      setSelectedSessionIds([Number(sessionId)]);
+    }
 
     document.getElementById('exercise-edit-form').onsubmit = async (e) => {
       e.preventDefault();
       const title = titleInput.value.trim();
       const desc = descInput.value.trim();
       const expectedReps = repsInput.value.trim();
-      const targetSessionId = Number(sessionSelect.value);
+      const selectedSessionIds = getSelectedSessionIds();
 
-      if (!title || !targetSessionId) return;
+      if (!title) return;
+      if (selectedSessionIds.length === 0) {
+        sessionsError.style.display = 'block';
+        sessionsError.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+      }
 
       await dbActions.addExercise({
         title,
         description: desc,
         expectedReps,
-        sessionId: targetSessionId,
+        sessionIds: selectedSessionIds,
         photo: currentPhotoBase64
       });
 
       showToast("Exercice créé !");
+      const targetSessionId = selectedSessionIds.includes(Number(sessionId)) ? sessionId : selectedSessionIds[0];
       window.location.hash = `#/session/${targetSessionId}`;
     };
   } else {
@@ -681,7 +941,23 @@ async function setupExerciseForm(sessionId, exerciseId) {
     titleInput.value = exercise.title;
     descInput.value = exercise.description || '';
     repsInput.value = exercise.expectedReps || '';
-    sessionSelect.value = exercise.sessionId;
+    
+    const exSessionIds = Array.isArray(exercise.sessionIds) ? exercise.sessionIds : (exercise.sessionId != null ? [Number(exercise.sessionId)] : []);
+    setSelectedSessionIds(exSessionIds);
+
+    // Show "Retirer de cette séance" button if exercise belongs to > 1 session and is present in current session
+    if (exSessionIds.length > 1 && sessionId !== 'new' && exSessionIds.includes(Number(sessionId))) {
+      removeSessionBtn.style.display = 'block';
+      removeSessionBtn.onclick = async () => {
+        if (confirm("Voulez-vous retirer cet exercice de la séance actuelle ?\nIl restera présent dans vos autres séances.")) {
+          await dbActions.removeExerciseFromSession(exerciseId, sessionId);
+          showToast("Exercice retiré de la séance");
+          window.location.hash = `#/session/${sessionId}`;
+        }
+      };
+    } else {
+      removeSessionBtn.style.display = 'none';
+    }
     
     if (exercise.photo) {
       currentPhotoBase64 = exercise.photo;
@@ -690,9 +966,14 @@ async function setupExerciseForm(sessionId, exerciseId) {
       photoContainer.classList.add('has-image');
     }
 
-    // Handle exercise deletion
+    // Handle exercise total deletion
     deleteBtn.onclick = async () => {
-      if (confirm("Voulez-vous vraiment supprimer cet exercice et tout son historique de résultats ?\nCette action est irréversible.")) {
+      const isMulti = exSessionIds.length > 1;
+      const confirmMsg = isMulti
+        ? "Cet exercice est associé à plusieurs séances.\nVoulez-vous vraiment le supprimer DÉFINITIVEMENT de TOUTES les séances ainsi que tout son historique de résultats ?\nCette action est irréversible."
+        : "Voulez-vous vraiment supprimer cet exercice et tout son historique de résultats ?\nCette action est irréversible.";
+
+      if (confirm(confirmMsg)) {
         await dbActions.deleteExercise(exerciseId);
         showToast("Exercice supprimé !");
         window.location.hash = `#/session/${sessionId}`;
@@ -704,20 +985,26 @@ async function setupExerciseForm(sessionId, exerciseId) {
       const title = titleInput.value.trim();
       const desc = descInput.value.trim();
       const expectedReps = repsInput.value.trim();
-      const targetSessionId = Number(sessionSelect.value);
+      const selectedSessionIds = getSelectedSessionIds();
 
-      if (!title || !targetSessionId) return;
+      if (!title) return;
+      if (selectedSessionIds.length === 0) {
+        sessionsError.style.display = 'block';
+        sessionsError.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+      }
 
       await dbActions.updateExercise({
         ...exercise,
         title,
         description: desc,
         expectedReps,
-        sessionId: targetSessionId,
+        sessionIds: selectedSessionIds,
         photo: currentPhotoBase64
       });
 
       showToast("Exercice mis à jour !");
+      const targetSessionId = selectedSessionIds.includes(Number(sessionId)) ? sessionId : selectedSessionIds[0];
       window.location.hash = `#/session/${targetSessionId}`;
     };
   }
@@ -742,10 +1029,11 @@ async function exportDatabase() {
     const exercises = await dbActions.getAllExercises();
     const results = await dbActions.getAllResults();
 
-    // Strip out base64 photos to keep backup light and clean
+    // Strip out base64 photos to keep backup light and clean, and ensure sessionIds is exported
     const exercisesWithoutPhotos = exercises.map(ex => {
       const { photo, ...rest } = ex;
-      return rest;
+      const sessionIds = Array.isArray(ex.sessionIds) ? ex.sessionIds : (ex.sessionId != null ? [Number(ex.sessionId)] : []);
+      return { ...rest, sessionIds };
     });
 
     const backupData = {

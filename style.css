@@ -660,3 +660,224 @@ textarea {
     box-shadow: 0 0 0 0 rgba(244, 63, 94, 0);
   }
 }
+
+/* Button Warning */
+.btn-warning {
+  background-color: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+}
+
+.btn-warning:active, .btn-warning:hover {
+  background-color: rgba(245, 158, 11, 0.28);
+}
+
+/* Form Error Message */
+.form-error-msg {
+  color: var(--accent);
+  font-size: 0.85rem;
+  font-weight: 500;
+  margin-top: 6px;
+}
+
+/* Sessions Selector Multi-Checkboxes */
+.sessions-selector-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.session-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  cursor: pointer;
+  transition: var(--transition);
+  user-select: none;
+}
+
+.session-checkbox-label:hover {
+  background-color: var(--bg-tertiary);
+  border-color: rgba(244, 63, 94, 0.4);
+}
+
+.session-checkbox-label input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--accent);
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.session-checkbox-label.checked {
+  border-color: var(--accent);
+  background-color: rgba(244, 63, 94, 0.08);
+}
+
+.session-checkbox-title {
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--text-main);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Exercise Sessions Badges */
+.exercise-sessions-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+  margin-bottom: 8px;
+}
+
+.session-chip {
+  font-size: 0.72rem;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background-color: var(--bg-tertiary);
+  color: var(--text-muted);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.session-chip.current {
+  background-color: rgba(244, 63, 94, 0.12);
+  color: var(--accent);
+  border-color: rgba(244, 63, 94, 0.25);
+}
+
+/* Modal: Link Existing Exercise */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(15, 23, 42, 0.8);
+  backdrop-filter: blur(6px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.25s ease, visibility 0.25s ease;
+}
+
+.modal-overlay.active {
+  opacity: 1;
+  visibility: visible;
+}
+
+.modal-card {
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow-lg);
+  width: 100%;
+  max-width: 520px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  padding: 24px;
+  transform: translateY(15px);
+  transition: transform 0.25s ease;
+}
+
+.modal-overlay.active .modal-card {
+  transform: translateY(0);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.modal-title {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.btn-close-modal {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1.6rem;
+  cursor: pointer;
+  padding: 4px;
+  line-height: 1;
+  transition: var(--transition);
+}
+
+.btn-close-modal:hover {
+  color: var(--text-main);
+}
+
+.link-exercises-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  max-height: 50vh;
+  padding-right: 4px;
+  margin: 12px 0 20px 0;
+}
+
+.modal-exercise-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.modal-exercise-item:hover {
+  border-color: rgba(244, 63, 94, 0.5);
+  background-color: var(--bg-tertiary);
+}
+
+.modal-exercise-item input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.modal-exercise-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.modal-exercise-name {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--text-main);
+}
+
+.modal-exercise-meta {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: auto;
+}
+
